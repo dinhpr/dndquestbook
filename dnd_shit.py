@@ -252,6 +252,7 @@ class EventManager:
             return "in_progress"
 
     def refresh_event(self):
+        download_questlog()
         print("Refresh event triggered!")
         self.load_quests()
 
