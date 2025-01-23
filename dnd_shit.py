@@ -2,6 +2,7 @@ import pygame
 import sys
 import configparser
 import os
+import requests
 from pathlib import Path
 
 # Helper function to get the path to the data directory
@@ -12,6 +13,41 @@ def get_data_path():
         base_path = Path(__file__).parent  # Путь к файлу .py
 
     return base_path / "data"
+
+data_path = get_data_path()
+# Function to download questlog.ini
+def download_questlog():
+    servername_path = data_path / "servername"
+
+    # Check if the servername file exists
+    if not servername_path.exists():
+        raise FileNotFoundError(f"Файл servername не найден в {servername_path}")
+
+    # Read the URL from the servername file
+    with open(servername_path, "r", encoding="utf-8") as file:
+        url = file.read().strip()
+
+    # Check if the URL is valid
+    if not url.startswith("http"):
+        raise ValueError("Некорректный URL в файле servername")
+
+    # Get the path to save questlog.ini
+    if getattr(sys, 'frozen', False):
+        save_path = Path(sys.executable).parent / "questlog.ini"
+    else:
+        save_path = Path(__file__).parent / "questlog.ini"
+
+    # Download the file
+    response = requests.get(url)
+    if response.status_code != 200:
+        raise ConnectionError(f"Ошибка загрузки файла: {response.status_code}")
+
+    # Save the file
+    with open(save_path, "w", encoding="utf-8") as questlog_file:
+        questlog_file.write(response.text)
+
+    print(f"Файл questlog.ini успешно загружен и сохранён в {save_path}")
+
 
 # Helper function to get the path to the questlog file
 def get_questlog_path():
@@ -26,19 +62,24 @@ def get_questlog_path():
 
     return questlog_path
 
+# Function to read servername file and download questlog.ini
+import time
+
+# Call the download function
+download_questlog()
 
 # Initialize pygame
 pygame.init()
-
+# os.system("pause")
 # Constants defining the game window and appearance
 WINDOW_SIZE = (1000, 1000)
 WINDOW_TITLE = "Fynn's book"
-icon = pygame.image.load("data/icon.png") 
+icon = pygame.image.load(data_path / "icon.png") 
 pygame.display.set_icon(icon)
-BACKGROUND_IMAGE = "data/background.png"
-MENU_IMAGE = "data/menu.png"
-FONT_PATH = "data/determinationmonorusbylyajk.otf"
-SYMBOL_FONT_PATH = "data/symbols_font.otf"
+BACKGROUND_IMAGE = data_path / "background.png"
+MENU_IMAGE = data_path / "menu.png"
+FONT_PATH = data_path / "determinationmonorusbylyajk.otf"
+SYMBOL_FONT_PATH = data_path / "symbols_font.otf"
 BUTTON_COLOR = (0, 0, 0)
 BUTTON_BORDER_COLOR = (255, 255, 0)
 BUTTON_TEXT_COLOR = (255, 255, 0)
