@@ -73,7 +73,7 @@ pygame.init()
 # os.system("pause")
 # Constants defining the game window and appearance
 WINDOW_SIZE = (1000, 1000)
-WINDOW_TITLE = "Fynn's book"
+WINDOW_TITLE = "Fynn's spellbook"
 icon = pygame.image.load(data_path / "icon.png") 
 pygame.display.set_icon(icon)
 BACKGROUND_IMAGE = data_path / "background.png"

@@ -8,3 +8,6 @@ build/
 # Игнорировать временные файлы
 __pycache__/
 *.py[cod]
+
+icon.ico
+*.bat
