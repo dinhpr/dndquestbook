@@ -1,7 +1,9 @@
 import pygame
+import threading
 import sys
 import configparser
 import requests
+import time
 from pathlib import Path
 
 # Constants
@@ -104,6 +106,13 @@ class QuestManager:
                 "rewards": [r.strip() for r in config.get(section, "rewards", fallback="").split(",") if r.strip()]
             })
 
+    def load_quests_async(self, qm):
+        def task():
+            if qm.resource_manager.download_questlog():
+                            qm.load_quests()
+        threading.Thread(target=task, daemon=True).start()
+
+    
     def get_quest_status(self, quest):
         if all(step["status"] == 1 for step in quest["steps"]):
             return "completed"
@@ -240,6 +249,11 @@ class GameUI:
         return button_rect
 
     def main_loop(self, quest_manager):
+        TIMER_DURATION = 5  # seconds
+        start_time = time.time()
+        quest_loaded = False
+
+        
         clock = pygame.time.Clock()
         pygame.display.set_icon(self.resources["icon"])
         
@@ -262,8 +276,7 @@ class GameUI:
                         self.scroll_offset += SCROLL_SPEED
                     
                     if self.draw_refresh_button().collidepoint(event.pos):
-                        if quest_manager.resource_manager.download_questlog():
-                            quest_manager.load_quests()
+                        quest_manager.load_quests_async(quest_manager)
 
             # Рендеринг фона
             self.screen.blit(background, (0, 0))
@@ -293,6 +306,11 @@ class GameUI:
             
             # Кнопка обновления
             self.draw_refresh_button()
+            
+            if time.time() - start_time >= TIMER_DURATION:
+                quest_manager.load_quests_async(quest_manager)
+                start_time = time.time()
+
             
             pygame.display.flip()
             clock.tick(60)
