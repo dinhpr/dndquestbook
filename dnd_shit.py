@@ -4,6 +4,8 @@ import sys
 import configparser
 import requests
 import time
+import hashlib
+import pygame.mixer
 from pathlib import Path
 
 # Constants
@@ -39,7 +41,8 @@ class ResourceManager:
         self.base_path = Path(__file__).parent
         self.data_path = self.base_path / "data"
         self.questlog_path = self.base_path / "questlog.ini"
-        
+        self.last_hash = None  # Сохраняем хэш только в памяти
+
         if not self.data_path.exists():
             self.data_path.mkdir()
 
@@ -47,16 +50,35 @@ class ResourceManager:
         try:
             with open(self.data_path / "servername", "r", encoding="utf-8") as f:
                 url = f.read().strip()
-            
+
             response = requests.get(url, timeout=10)
             response.raise_for_status()
-            
+
+            # Хэш нового содержимого
+            new_hash = hashlib.sha256(response.content).hexdigest()
+
+            # Сохраняем файл
             with open(self.questlog_path, "w", encoding="utf-8") as f:
                 f.write(response.text)
+
+            # Проверка изменения
+            if self.last_hash is not None and new_hash != self.last_hash:
+                self.play_update_sound()
+
+            self.last_hash = new_hash  # Обновляем хэш в памяти
             return True
+
         except Exception as e:
             print(f"Error downloading questlog: {e}")
             return False
+
+    def play_update_sound(self):
+        try:
+            pygame.mixer.init()
+            sound = pygame.mixer.Sound(str(self.data_path / "update.ogg"))
+            sound.play()
+        except Exception as e:
+            print(f"Error playing update sound: {e}")
 
 class QuestManager:
     def __init__(self, resource_manager):
