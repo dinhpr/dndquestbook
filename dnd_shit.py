@@ -40,45 +40,89 @@ class ResourceManager:
     def __init__(self):
         self.base_path = Path(__file__).parent
         self.data_path = self.base_path / "data"
+        # Локальный файл, куда всегда сохраняем последний удачно загруженный или доступный офлайн
         self.questlog_path = self.base_path / "questlog.ini"
         self.last_hash = None  # Сохраняем хэш только в памяти
+        self.current_name = None  # сюда сохранится имя без .ini
 
         if not self.data_path.exists():
             self.data_path.mkdir()
 
-    def download_questlog(self):
+    def pointer(self) -> str | None:
+        """
+        Читает из data/servername базовый URL, делает GET-запрос,
+        ожидает в теле plain-текста имя файла (без расширения),
+        возвращает полный URL с .ini
+        """
         try:
-            with open(self.data_path / "servername", "r", encoding="utf-8") as f:
-                url = f.read().strip()
+            servername_file = self.data_path / "servername"
+            base_url = servername_file.read_text(encoding="utf-8").strip()
+            resp = requests.get(base_url, timeout=10)
+            resp.raise_for_status()
+            # Текст — это имя файла без расширения
+            filename = resp.text.strip()
+            self.current_name = filename
+            return f"{base_url.rstrip('/')}/{filename}.ini"
+        except Exception as e:
+            print(f"Error fetching pointer: {e}")
+            return None
 
-            response = requests.get(url, timeout=10)
-            response.raise_for_status()
+    def download_questlog(self) -> bool:
+        """
+        Пытается скачать по URL из pointer().
+        При неудаче (или если pointer() вернул None) —
+        использует локальную копию questlog.ini, если она есть.
+        Возвращает True, если удалось получить данные хоть из одного источника.
+        """
+        pointer_url = None
+        try:
+            pointer_url = self.pointer()
+            if not pointer_url:
+                raise RuntimeError("pointer() returned None")
 
-            # Хэш нового содержимого
-            new_hash = hashlib.sha256(response.content).hexdigest()
+            # Основная попытка скачать свежий .ini
+            resp = requests.get(pointer_url, timeout=10)
+            resp.raise_for_status()
 
-            # Сохраняем файл
-            with open(self.questlog_path, "w", encoding="utf-8") as f:
-                f.write(response.text)
+            content_bytes = resp.content
+            new_hash = hashlib.sha256(content_bytes).hexdigest()
 
-            # Проверка изменения
+            # Сохраняем новую версию локально
+            self.questlog_path.write_bytes(content_bytes)
+
+            # Если был предыдущий хэш и он изменился — звуковой сигнал обновления
             if self.last_hash is not None and new_hash != self.last_hash:
                 self.play_update_sound()
 
-            self.last_hash = new_hash  # Обновляем хэш в памяти
+            self.last_hash = new_hash
             return True
 
         except Exception as e:
-            print(f"Error downloading questlog: {e}")
+            print(f"Error downloading questlog from server ({pointer_url}): {e}")
+
+            # Фолбэк — используем локальный файл, если он есть
+            if self.questlog_path.exists():
+                try:
+                    local_bytes = self.questlog_path.read_bytes()
+                    self.last_hash = hashlib.sha256(local_bytes).hexdigest()
+                    print("Using local questlog.ini")
+                    return True
+                except Exception as le:
+                    print(f"Error reading local questlog.ini: {le}")
+
             return False
 
     def play_update_sound(self):
+        """
+        Проигрывает звуковой файл update.ogg из data/
+        """
         try:
             pygame.mixer.init()
             sound = pygame.mixer.Sound(str(self.data_path / "update.ogg"))
             sound.play()
         except Exception as e:
             print(f"Error playing update sound: {e}")
+
 
 class QuestManager:
     def __init__(self, resource_manager):
@@ -143,8 +187,9 @@ class QuestManager:
         return "in_progress"
 
 class GameUI:
-    def __init__(self):
+    def __init__(self, resource_manager):
         pygame.init()
+        self.resource_manager = resource_manager
         self.screen = pygame.display.set_mode(WINDOW_SIZE)
         pygame.display.set_caption("Fynn's spellbook")
         
@@ -308,7 +353,8 @@ class GameUI:
             content_surface = pygame.Surface((WINDOW_SIZE[0], WINDOW_SIZE[1]), pygame.SRCALPHA)
             
             # Заголовок
-            header_surf = self.fonts["header"].render("Квесты", True, COLORS["text"])
+            title = self.resource_manager.current_name or "Квесты"
+            header_surf = self.fonts["header"].render(title, True, COLORS["text"])
             self.screen.blit(header_surf, (108, 98))
             
             # Рендерим квесты
@@ -345,7 +391,7 @@ def main():
     quest_mgr = QuestManager(res_mgr)
     quest_mgr.load_quests()
     
-    ui = GameUI()
+    ui = GameUI(res_mgr)
     ui.main_loop(quest_mgr)
 
 if __name__ == "__main__":
